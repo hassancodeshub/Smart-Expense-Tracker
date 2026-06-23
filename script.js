@@ -1,11 +1,10 @@
-var db_state = null; // storing global app data
+var db_state = null; 
 const ST_KEY = 'spendwise_student_data';
 
-// hardcoded rotating tips
 function getTip() {
     var t = [
         "Don't order Zomato at 2 AM, it drains the wallet.",
-        "Track the chai/sutta expenses, they add up faster than tuition fees.",
+        "Track the chai & nashta expenses, they add up faster than tuition fees.",
         "Use student IDs for Spotify and Apple Music.",
         "If you're broke, it's Maggi time.",
         "Tracking every single transaction reveals where your money is leaking."
@@ -13,7 +12,6 @@ function getTip() {
     return t[Math.floor(Math.random() * t.length)];
 }
 
-// bad custom hash for local pin so it's not plaintext in dev tools
 function doHash(s) {
     let x = 0;
     for(let i=0; i<s.length; i++) {
@@ -26,7 +24,6 @@ function doHash(s) {
 function startAppFlow() {
     var overlay = document.getElementById('login-overlay');
     var wrapper = document.getElementById('secure-app-wrapper');
-    // completely hide dom until pin is entered
     wrapper.style.visibility = 'hidden'; 
     wrapper.style.opacity = '0';
 
@@ -42,7 +39,6 @@ function startAppFlow() {
             var p2 = document.getElementById('setup-pin-confirm').value;
             if(p1 != p2) { showMsg("Pins do not match bro", "error"); return; }
 
-            // basic replace to stop XSS breaking json structure
             db_state.prof.n = document.getElementById('setup-name').value.replace(/[<>]/g, "");
             db_state.prof.budget_base = parseFloat(document.getElementById('setup-budget').value).toFixed(2);
             db_state.prof.pHash = doHash(p1);
@@ -73,7 +69,6 @@ function startAppFlow() {
     }
 }
 
-// simple toast
 var tmr = null;
 function showMsg(m, t) {
     var box = document.getElementById('toast-container');
@@ -99,28 +94,42 @@ function forceUIUpdate() {
 
     var mon = new Date().getMonth();
     var yr = new Date().getFullYear();
-    var pocket_money = parseFloat(prf.budget_base);
-    var kharcha = 0;
     
-    // inline filter avoiding UTC shifting
+    var initial_starting_balance = parseFloat(prf.budget_base) || 0;
+    
+    var past_rollover = initial_starting_balance;
+    var this_mo_income = 0;
+    var this_mo_expense = 0;
     var this_mo_txs = [];
+
+    // Continuous Ledger Math
     for(var k=0; k<db_state.txs.length; k++) {
-        var dparts = db_state.txs[k].date.split('-');
-        if(parseInt(dparts[1])-1 == mon && parseInt(dparts[0]) == yr) {
-            this_mo_txs.push(db_state.txs[k]);
-            if(db_state.txs[k].type == 'income') pocket_money += parseFloat(db_state.txs[k].amount);
-            else kharcha += parseFloat(db_state.txs[k].amount);
+        var t = db_state.txs[k];
+        var dparts = t.date.split('-');
+        var t_yr = parseInt(dparts[0]);
+        var t_mon = parseInt(dparts[1]) - 1;
+        var amt = parseFloat(t.amount);
+
+        if(t_yr == yr && t_mon == mon) {
+            this_mo_txs.push(t);
+            if(t.type == 'income') this_mo_income += amt;
+            else this_mo_expense += amt;
+        } else if (t_yr < yr || (t_yr == yr && t_mon < mon)) {
+            if(t.type == 'income') past_rollover += amt;
+            else past_rollover -= amt;
         }
     }
 
-    var available = pocket_money - kharcha;
+    var total_pool_this_month = past_rollover + this_mo_income;
+    var available = total_pool_this_month - this_mo_expense;
+    
     var d_in_m = new Date(yr, mon+1, 0).getDate();
     var r_days = d_in_m - new Date().getDate() + 1;
     if(r_days<1) r_days=1;
     var daily_allowance = available > 0 ? available/r_days : 0;
 
-    document.getElementById('dash-budget').innerText = prf.curr + pocket_money.toFixed(2);
-    document.getElementById('dash-spent').innerText = prf.curr + kharcha.toFixed(2);
+    document.getElementById('dash-budget').innerText = prf.curr + total_pool_this_month.toFixed(2);
+    document.getElementById('dash-spent').innerText = prf.curr + this_mo_expense.toFixed(2);
     document.getElementById('dash-remaining').innerText = prf.curr + available.toFixed(2);
     
     if(available < 0) {
@@ -146,7 +155,7 @@ function forceUIUpdate() {
     document.getElementById('dash-no-spend').innerText = no_spend;
 
     var pct = 0;
-    if(pocket_money > 0) pct = Math.min((kharcha/pocket_money)*100, 100);
+    if(total_pool_this_month > 0) pct = Math.min((this_mo_expense/total_pool_this_month)*100, 100);
     
     var pb = document.getElementById('dash-progress-bar');
     pb.style.width = pct + '%';
@@ -235,15 +244,18 @@ function buildInsights() {
     var wrap = document.getElementById('insights-container');
     var m = new Date().getMonth();
     var y = new Date().getFullYear();
-    var inc=parseFloat(db_state.prof.budget_base), exp=0;
     
+    var total_available = parseFloat(db_state.prof.budget_base) || 0;
     var zomato_tax = 0;
+    var this_mo_exp = 0;
+
     db_state.txs.forEach(t => {
-        let p = t.date.split('-');
-        if(p[1]-1 == m && p[0] == y) {
-            if(t.type=='income') inc += parseFloat(t.amount);
-            else {
-                exp += parseFloat(t.amount);
+        if(t.type=='income') total_available += parseFloat(t.amount);
+        else {
+            total_available -= parseFloat(t.amount);
+            let p = t.date.split('-');
+            if(p[1]-1 == m && p[0] == y) {
+                this_mo_exp += parseFloat(t.amount);
                 if(t.category == 'Food' || t.title.toLowerCase().includes('zomato') || t.title.toLowerCase().includes('swiggy')) {
                     zomato_tax += parseFloat(t.amount);
                 }
@@ -252,14 +264,14 @@ function buildInsights() {
     });
 
     var msgs = [];
-    if(exp > inc) msgs.push({c:'danger', t:'Over Budget', p:'You are literally out of money.'});
-    else if(exp/inc > 0.8) msgs.push({c:'warning', t:'Careful', p:'Budget is 80% gone.'});
+    if(total_available < 0) msgs.push({c:'danger', t:'Overdrawn', p:'You are literally out of money and in the negative.'});
+    else if(total_available < 500) msgs.push({c:'warning', t:'Low Funds', p:'Your total available cash pool is getting dangerously low.'});
     
-    if(zomato_tax > (inc * 0.2) && inc > 0) {
-        msgs.push({c:'warning', t:'Junk Food Alert', p:`You spent ${db_state.prof.curr}${zomato_tax.toFixed(2)} on outside food. Start cooking.`});
+    if(zomato_tax > 0) {
+        msgs.push({c:'warning', t:'Junk Food Alert', p:`You spent ${db_state.prof.curr}${zomato_tax.toFixed(2)} on outside food this month. Start cooking.`});
     }
 
-    if(msgs.length==0 && exp>0) msgs.push({c:'success', t:'Looking Good', p:'Finances are stable.'});
+    if(msgs.length==0 && this_mo_exp>0) msgs.push({c:'success', t:'Looking Good', p:'Finances are stable and you are staying positive.'});
     if(msgs.length==0) { wrap.innerHTML = '<p class="empty-state-small">Need more data to analyze.</p>'; return; }
     
     var html = '';
@@ -395,21 +407,13 @@ function setupAllTheEvents() {
         var amt = parseFloat(document.getElementById('exp-amount').value);
         if(isNaN(amt) || amt <= 0) return showMsg("Bad amount", "error");
         
-        var cm = new Date().getMonth();
-        var cy = new Date().getFullYear();
-        var total_in = parseFloat(db_state.prof.budget_base);
-        var total_kharcha = 0;
+        var total_bal = parseFloat(db_state.prof.budget_base) || 0;
+        db_state.txs.forEach(t => {
+            if(t.type=='income') total_bal += parseFloat(t.amount);
+            else total_bal -= parseFloat(t.amount);
+        });
         
-        for(let j=0; j<db_state.txs.length; j++) {
-            let parts = db_state.txs[j].date.split('-');
-            if(parseInt(parts[1])-1 == cm && parseInt(parts[0]) == cy) {
-                if(db_state.txs[j].type == 'income') total_in += parseFloat(db_state.txs[j].amount);
-                else total_kharcha += parseFloat(db_state.txs[j].amount);
-            }
-        }
-        
-        var left = total_in - total_kharcha;
-        if(amt > left) { return showMsg("You broke! Can't add this.", "error"); }
+        if(amt > total_bal) { return showMsg("You broke! Can't add this.", "error"); }
 
         db_state.txs.unshift({
             id: 'x_' + Math.random().toString(36).substr(2) + Date.now(),
@@ -432,7 +436,7 @@ function setupAllTheEvents() {
         var a = parseFloat(document.getElementById('fund-amount').value);
         if(isNaN(a) || a<=0) return;
         db_state.txs.unshift({
-            id: 'y_' + Math.random().toString(36).substr(2),
+            id: 'y_' + Math.random().toString(36).substr(2) + Date.now(),
             title: document.getElementById('fund-title').value.replace(/[<>]/g, ""),
             amount: parseFloat(a.toFixed(2)), category: 'Income', type: 'income', notes:'',
             date: document.getElementById('fund-date').value
@@ -479,16 +483,13 @@ function setupAllTheEvents() {
         
         var m = new Date().getMonth();
         var y = new Date().getFullYear();
-        var inc = parseFloat(db_state.prof.budget_base), exp = 0;
         
+        // Exact real-time all-time balance logic
+        var bal = parseFloat(db_state.prof.budget_base) || 0;
         db_state.txs.forEach(t => {
-            let p = t.date.split('-');
-            if(p[1]-1 == m && p[0] == y) {
-                if(t.type=='income') inc += parseFloat(t.amount);
-                else exp += parseFloat(t.amount);
-            }
+            if(t.type=='income') bal += parseFloat(t.amount);
+            else bal -= parseFloat(t.amount);
         });
-        var bal = inc - exp;
         
         var today = new Date();
         var days_in_mo = new Date(y, m+1, 0).getDate();
@@ -547,10 +548,11 @@ function setupAllTheEvents() {
         res.classList.remove('hidden');
     };
 
+    // JSON Export/Import
     document.getElementById('btn-export').onclick = function(){
         var b = new Blob([JSON.stringify(db_state, null, 2)], {type:"application/json"});
         var a = document.createElement('a'); a.href = URL.createObjectURL(b);
-        a.download = "SpendWise_DUMP.json"; a.click();
+        a.download = "SpendWise_Backup.json"; a.click();
         URL.revokeObjectURL(a.href);
     };
 
@@ -568,6 +570,55 @@ function setupAllTheEvents() {
                     showMsg("Invalid file format", "error");
                 }
             } catch(err) { showMsg("Bad file", "error"); }
+        };
+        r.readAsText(e.target.files[0]);
+    };
+
+    // --- NEW: CSV Export ---
+    document.getElementById('btn-export-csv').onclick = function() {
+        if (!db_state.txs.length) return showMsg("No data to export", "error");
+        var csv = "ID,Type,Title,Amount,Category,Date,Notes\n";
+        db_state.txs.forEach(function(t) {
+            csv += `${t.id},${t.type},"${t.title}",${t.amount},${t.category},${t.date},"${t.notes || ''}"\n`;
+        });
+        var b = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+        var a = document.createElement('a'); a.href = URL.createObjectURL(b);
+        a.download = "SpendWise_Transactions.csv"; a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    // --- NEW: CSV Import ---
+    document.getElementById('btn-trigger-import-csv').onclick = function(){ document.getElementById('file-import-csv').click(); };
+    
+    document.getElementById('file-import-csv').onchange = function(e) {
+        var r = new FileReader();
+        r.onload = function(ev) {
+            var lines = ev.target.result.split('\n');
+            var imported = 0;
+            for (var i = 1; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (!line) continue;
+                // Parse CSV ignoring commas inside quotes
+                var p = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, ''));
+                if (p.length >= 6) {
+                    // Check ID to prevent duplicating existing imports
+                    if (!db_state.txs.find(x => x.id == p[0])) {
+                        db_state.txs.push({
+                            id: p[0], type: p[1], title: p[2], amount: parseFloat(p[3]), 
+                            category: p[4], date: p[5], notes: p[6] || ''
+                        });
+                        imported++;
+                    }
+                }
+            }
+            if(imported > 0) {
+                db_state.txs.sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+                localStorage.setItem(ST_KEY, JSON.stringify(db_state));
+                showMsg(imported + " records imported!", "success");
+                forceUIUpdate();
+            } else {
+                showMsg("No new records found.", "warning");
+            }
         };
         r.readAsText(e.target.files[0]);
     };
@@ -593,5 +644,3 @@ window.onload = function() {
     }
     startAppFlow();
 };
-            
-                                

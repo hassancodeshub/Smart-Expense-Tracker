@@ -21,7 +21,7 @@
                     <input type="text" id="setup-name" required>
                 </div>
                 <div class="form-group">
-                    <label>Initial Monthly Budget</label>
+                    <label>Initial Starting Balance</label>
                     <input type="number" id="setup-budget" step="0.01" min="0" required>
                 </div>
                 <div class="form-group">
@@ -87,7 +87,7 @@
                     <div class="metrics-grid">
                         <div class="card metric-card">
                             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <h3>Total Budget Pool</h3>
+                                <h3>Total Available Pool</h3>
                                 <button class="btn btn-secondary" style="padding: 4px 8px; min-height: 0; font-size: 0.75rem;" id="btn-add-funds">+ Add Funds</button>
                             </div>
                             <div class="value truncate-text" id="dash-budget">0.00</div>
@@ -227,13 +227,17 @@
                         </form>
                         <hr class="divider">
                         <div class="data-management">
-                            <h3>Data Management</h3>
-                            <div class="button-group">
-                                <button class="btn btn-secondary" id="btn-export">Export Backup</button>
-                                <button class="btn btn-secondary" id="btn-trigger-import">Import Backup</button>
-                                <button class="btn btn-danger" id="btn-reset">Reset Application</button>
-                                <input type="file" id="file-import" accept=".json" class="hidden">
-                            </div>
+    <h3>Data Management</h3>
+    <div class="button-group">
+        <button class="btn btn-secondary" id="btn-export">Export Backup (JSON)</button>
+        <button class="btn btn-secondary" id="btn-export-csv">Export to CSV</button>
+        <button class="btn btn-secondary" id="btn-trigger-import">Import Backup (JSON)</button>
+        <button class="btn btn-secondary" id="btn-trigger-import-csv">Import CSV</button>
+        <button class="btn btn-danger" id="btn-reset">Reset Application</button>
+        <input type="file" id="file-import" accept=".json" class="hidden">
+        <input type="file" id="file-import-csv" accept=".csv" class="hidden">
+    </div>
+</div>
                         </div>
                     </div>
                 </section>
