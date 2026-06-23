@@ -186,7 +186,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--emerald); }
 .goal-meta { font-size: 0.875rem; color: var(--text-muted); margin-bottom: calc(var(--spacing) * 1.5); }
 .goal-stats { display: flex; justify-content: space-between; font-size: 0.8rem; margin-top: 8px; }
 
-.afford-form-card, .afford-result { max-width: 600px; margin-bottom: calc(var(--spacing) * 3); }
+.afford-form-card, .afford-result {max-width: 600px;margin-left: auto;margin-right: auto;margin-bottom: calc(var(--spacing) * 3); }
+
+/* Let's also center the title so it sits perfectly above the card */
+#view-afford h2 {text-align: center; margin-bottom: calc(var(--spacing) * 2);
+}
 .afford-result h3 { font-size: 1.5rem; margin-bottom: var(--spacing); }
 .afford-result p { font-size: 0.95rem; margin-bottom: 8px;}
 .bg-green { border-color: var(--success); } .bg-green h3 { color: var(--success); }
